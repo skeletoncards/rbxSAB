@@ -1,8 +1,11 @@
 --[[
-    ReiduGUI v1.0 - Standalone GUI Library
+    ReiduGUI v1.1 - Standalone GUI Library
     ========================================
-    A reusable, drag-and-drop GUI framework.
-    No hardcoded game logic. Pure UI only.
+    Added in v1.1:
+      • Feature search bar (type to filter across all tabs)
+      • Floating toggle button (always-visible, draggable)
+      • AddColorPicker(section, label, defaultHex, callback)
+      • Feature registry (all controls are searchable)
 
     USAGE:
         local GUI = loadstring(game:HttpGet("YOUR_URL"))()
@@ -10,14 +13,14 @@
         local win = GUI.new({
             title      = "My Script",
             version    = "v1.0",
-            accent     = "7C5CBF",   -- hex, no #
+            accent     = "7C5CBF",
             background = "0D0D0F",
             main       = "141418",
             outline    = "2A2A35",
             toggleKey  = Enum.KeyCode.Insert,
         })
 
-        win:SetProgress(0, "loading...")
+        win:SetProgress(0.5, "loading...")
 
         local tab     = win:AddTab("Main", "o")
         local section = win:AddSection(tab, "FEATURES")
@@ -30,17 +33,15 @@
             print("Speed:", val)
         end)
 
+        local colorCtrl = win:AddColorPicker(section, "Accent Color", "7C5CBF", function(hex)
+            print("New color:", hex)
+        end)
+
+        local setCoins = win:AddStatusLabel("Coins: 0", 1)
+        setCoins("Coins: 1.2M")
+
         win:SetProgress(1.0, "ready!")
         win:Dismiss()
-
-        -- Later you can read/write values:
-        toggle:Set(true)
-        print(toggle:Get())
-
-        slider:Set(50)
-        print(slider:Get())
-
-        win:Toast("Hello World!", true)
 ]]
 
 -- ============================================================
@@ -99,14 +100,17 @@ function ReiduGUI.new(cfg)
     self._version   = cfg.version    or "v1.0"
     self._toggleKey = cfg.toggleKey  or Enum.KeyCode.Insert
 
-    self._tabs          = {}
-    self._toastQueue    = {}
-    self._toastRunning  = false
+    self._tabs           = {}
+    self._toastQueue     = {}
+    self._toastRunning   = false
+    self._featureRegistry = {}
+    self._lastActiveTab  = nil
 
     self:_BuildLoader()
     self:_BuildMainFrame()
     self:_BuildToast()
     self:_BuildAmbient()
+    self:_BuildFloatingButton()
 
     -- Toggle visibility hotkey
     UserInputService.InputBegan:Connect(function(input, gpe)
@@ -139,7 +143,6 @@ function ReiduGUI:_BuildLoader()
     end
     self._loadGui = gui
 
-    -- Overlay
     local overlay = Instance.new("Frame")
     overlay.Size = UDim2.new(1,0,1,0)
     overlay.BackgroundColor3 = Color3.fromRGB(5,5,8)
@@ -149,7 +152,6 @@ function ReiduGUI:_BuildLoader()
     overlay.Parent = gui
     self._loadOverlay = overlay
 
-    -- Card
     local card = Instance.new("Frame")
     card.Size = UDim2.new(0,320,0,140)
     card.AnchorPoint = Vector2.new(0.5,0.5)
@@ -166,7 +168,6 @@ function ReiduGUI:_BuildLoader()
     self._loadCard   = card
     self._loadStroke = stroke
 
-    -- Scan tint
     local scan = Instance.new("Frame")
     scan.Size = UDim2.new(1,0,1,0)
     scan.BackgroundColor3 = Color3.fromRGB(100,60,180)
@@ -176,7 +177,6 @@ function ReiduGUI:_BuildLoader()
     scan.Parent = card
     Instance.new("UICorner", scan).CornerRadius = UDim.new(0,12)
 
-    -- Title
     local titleLbl = Instance.new("TextLabel")
     titleLbl.Text = self._title
     titleLbl.Size = UDim2.new(1,-20,0,40)
@@ -190,7 +190,6 @@ function ReiduGUI:_BuildLoader()
     titleLbl.Parent = card
     self._loadTitle = titleLbl
 
-    -- Sub text
     local sub = Instance.new("TextLabel")
     sub.Text = "initializing..."
     sub.Size = UDim2.new(1,-20,0,18)
@@ -204,7 +203,6 @@ function ReiduGUI:_BuildLoader()
     sub.Parent = card
     self._loadSub = sub
 
-    -- Progress track
     local track = Instance.new("Frame")
     track.Size = UDim2.new(1,-40,0,4)
     track.Position = UDim2.new(0,20,0,88)
@@ -215,7 +213,6 @@ function ReiduGUI:_BuildLoader()
     Instance.new("UICorner", track).CornerRadius = UDim.new(0.5,0)
     self._loadTrack = track
 
-    -- Progress fill
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new(0,0,1,0)
     fill.BackgroundColor3 = Color3.fromRGB(140,80,255)
@@ -232,7 +229,6 @@ function ReiduGUI:_BuildLoader()
     self._loadFill = fill
     self._loadGrad = grad
 
-    -- Version tag
     local ver = Instance.new("TextLabel")
     ver.Text = self._version
     ver.Size = UDim2.new(1,-20,0,16)
@@ -246,11 +242,9 @@ function ReiduGUI:_BuildLoader()
     ver.Parent = card
     self._loadVer = ver
 
-    -- Fade in
     Tween(overlay, TweenInfo.new(0.4, Enum.EasingStyle.Quint), {BackgroundTransparency = 0.4})
     Tween(card,    TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0})
 
-    -- Title colour pulse
     task.spawn(function()
         local cols = {Color3.fromRGB(200,170,255), Color3.fromRGB(160,100,255), Color3.fromRGB(220,190,255)}
         local i = 1
@@ -261,7 +255,6 @@ function ReiduGUI:_BuildLoader()
         end
     end)
 
-    -- Gradient spin
     task.spawn(function()
         local r = 0
         while gui.Parent do
@@ -271,7 +264,6 @@ function ReiduGUI:_BuildLoader()
         end
     end)
 
-    -- 20s failsafe
     task.delay(20, function()
         if self._mainFrame and not self._mainFrame.Visible then
             self._mainFrame.Visible = true
@@ -280,7 +272,6 @@ function ReiduGUI:_BuildLoader()
     end)
 end
 
--- Public: update progress bar (0-1) and optional subtitle
 function ReiduGUI:SetProgress(pct, label)
     Tween(self._loadFill, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
         Size = UDim2.new(pct, 0, 1, 0)
@@ -288,13 +279,10 @@ function ReiduGUI:SetProgress(pct, label)
     if label then self._loadSub.Text = label end
 end
 
--- Public: dismiss loading screen and reveal main GUI
 function ReiduGUI:Dismiss()
-    -- Reveal main frame slightly before card fully fades
     task.delay(0.3, function()
         if self._mainFrame then self._mainFrame.Visible = true end
     end)
-
     local c = self._loadCard
     Tween(c, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
         BackgroundTransparency = 1,
@@ -303,9 +291,9 @@ function ReiduGUI:Dismiss()
     for _, elem in ipairs({self._loadTitle, self._loadSub, self._loadVer}) do
         Tween(elem, TweenInfo.new(0.3), {TextTransparency = 1})
     end
-    Tween(self._loadFill,   TweenInfo.new(0.3), {BackgroundTransparency = 1})
-    Tween(self._loadTrack,  TweenInfo.new(0.3), {BackgroundTransparency = 1})
-    Tween(self._loadStroke, TweenInfo.new(0.3), {Transparency = 1})
+    Tween(self._loadFill,    TweenInfo.new(0.3), {BackgroundTransparency = 1})
+    Tween(self._loadTrack,   TweenInfo.new(0.3), {BackgroundTransparency = 1})
+    Tween(self._loadStroke,  TweenInfo.new(0.3), {Transparency = 1})
     Tween(self._loadOverlay, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundTransparency = 1})
     task.delay(0.7, function() self._loadGui:Destroy() end)
 end
@@ -314,7 +302,6 @@ end
 -- MAIN FRAME
 -- ============================================================
 function ReiduGUI:_BuildMainFrame()
-    -- ScreenGui
     local sg = Instance.new("ScreenGui")
     sg.Name = self._title
     sg.ResetOnSpawn = false
@@ -328,14 +315,13 @@ function ReiduGUI:_BuildMainFrame()
     end)
     self._screenGui = sg
 
-    -- Main container
     local mf = Instance.new("Frame")
     mf.Size = UDim2.new(0,580,0,520)
     mf.AnchorPoint = Vector2.new(0.5,0.5)
     mf.Position = UDim2.new(0.5,0,0.5,0)
     mf.BackgroundColor3 = self:T("Background")
     mf.BorderSizePixel = 0
-    mf.Visible = false   -- hidden until Dismiss() is called
+    mf.Visible = false
     mf.Parent = sg
     Instance.new("UICorner", mf).CornerRadius = UDim.new(0,8)
     self._mainFrame  = mf
@@ -343,7 +329,6 @@ function ReiduGUI:_BuildMainFrame()
     self._mainStroke.Color = self:T("Outline")
     self._mainStroke.Thickness = 1
 
-    -- Pixel corner accents
     local function PC(xS,yS,xO,yO)
         local f = Instance.new("Frame")
         f.Size = UDim2.new(0,6,0,6)
@@ -353,14 +338,12 @@ function ReiduGUI:_BuildMainFrame()
     end
     PC(0,0,2,2); PC(1,0,-8,2); PC(0,1,2,-8); PC(1,1,-8,-8)
 
-    -- Scan tint
     local scan = Instance.new("Frame")
     scan.Size = UDim2.new(1,0,1,0)
     scan.BackgroundTransparency = 0.97
     scan.BackgroundColor3 = Color3.fromRGB(120,80,200)
     scan.BorderSizePixel = 0; scan.ZIndex = 0; scan.Parent = mf
 
-    -- Title bar
     self:_BuildTitleBar(mf)
 
     -- Nav sidebar
@@ -380,16 +363,16 @@ function ReiduGUI:_BuildMainFrame()
     self._navFrame = nav
     self:_HookDrag(nav)
 
-    -- Tab container
+    -- Tab container — sits below the search bar (y=72)
     local tc = Instance.new("Frame")
-    tc.Size = UDim2.new(0,462,0,452)
-    tc.Position = UDim2.new(0,114,0,40)
+    tc.Size = UDim2.new(0,462,0,420)
+    tc.Position = UDim2.new(0,114,0,72)
     tc.BackgroundTransparency = 1
     tc.BorderSizePixel = 0
     tc.Parent = mf
     self._tabContainer = tc
 
-    -- Status / live bar
+    -- Live / status bar
     local lf = Instance.new("Frame")
     lf.Size = UDim2.new(1,0,0,28)
     lf.Position = UDim2.new(0,0,1,-28)
@@ -406,7 +389,13 @@ function ReiduGUI:_BuildMainFrame()
     self._liveLblIdx = 0
     self:_HookDrag(lf)
 
-    -- Avatar circle (bottom-left of nav)
+    -- Search bar (between title bar and tab content)
+    self:_BuildSearch()
+
+    -- Color picker popup (hidden, shared across all AddColorPicker rows)
+    self:_BuildColorPicker()
+
+    -- Avatar
     task.spawn(function()
         local af = Instance.new("Frame")
         af.Size = UDim2.new(0,54,0,54)
@@ -442,7 +431,6 @@ function ReiduGUI:_BuildTitleBar(mf)
     self._titleBar    = tb
     self._titleBarFix = fix
 
-    -- Badge
     local badge = Instance.new("Frame")
     badge.Size = UDim2.new(0,18,0,18)
     badge.Position = UDim2.new(0,10,0.5,-9)
@@ -455,7 +443,6 @@ function ReiduGUI:_BuildTitleBar(mf)
     bi.BorderSizePixel = 0; bi.Parent = badge
     self._badge = badge
 
-    -- Title text
     local tl = Instance.new("TextLabel")
     tl.Text = self._title
     tl.Size = UDim2.new(1,-100,1,0); tl.Position = UDim2.new(0,34,0,0)
@@ -464,7 +451,6 @@ function ReiduGUI:_BuildTitleBar(mf)
     tl.TextXAlignment = Enum.TextXAlignment.Left; tl.Parent = tb
     self._titleLabel = tl
 
-    -- Date / username tag
     local dt = Instance.new("TextLabel")
     dt.Size = UDim2.new(0,0,0,14); dt.AutomaticSize = Enum.AutomaticSize.X
     dt.Position = UDim2.new(0,152,0.5,-7)
@@ -484,7 +470,6 @@ function ReiduGUI:_BuildTitleBar(mf)
         end
     end)
 
-    -- Animated accent line
     local al = Instance.new("Frame")
     al.Size = UDim2.new(1,0,0,1); al.Position = UDim2.new(0,0,1,0)
     al.BackgroundColor3 = Color3.fromRGB(140,80,255)
@@ -497,7 +482,6 @@ function ReiduGUI:_BuildTitleBar(mf)
     })
     self._accentGrad = ag
 
-    -- Close
     local close = Instance.new("TextButton")
     close.Text = "X"; close.Size = UDim2.new(0,28,0,28)
     close.Position = UDim2.new(1,-32,0,4)
@@ -510,7 +494,6 @@ function ReiduGUI:_BuildTitleBar(mf)
     close.MouseEnter:Connect(function() Tween(close, fast, {BackgroundColor3 = Color3.fromRGB(220,80,80)}) end)
     close.MouseLeave:Connect(function() Tween(close, fast, {BackgroundColor3 = Color3.fromRGB(180,60,60)}) end)
 
-    -- Minimize
     local min = Instance.new("TextButton")
     min.Text = "-"; min.Size = UDim2.new(0,28,0,28)
     min.Position = UDim2.new(1,-64,0,4)
@@ -527,12 +510,12 @@ function ReiduGUI:_BuildTitleBar(mf)
         if self._tabContainer then self._tabContainer.Visible = not minimized end
         if self._navFrame     then self._navFrame.Visible     = not minimized end
         if self._liveFrame    then self._liveFrame.Visible    = not minimized end
+        if self._searchBox    then self._searchBox.Visible    = not minimized end
         self._mainFrame.Size = minimized
             and UDim2.new(0,580,0,36)
             or  UDim2.new(0,580,0,520)
     end)
 
-    -- Drag handle
     local drag = Instance.new("TextButton")
     drag.Size = UDim2.new(1,-80,1,0)
     drag.BackgroundTransparency = 1; drag.Text = ""
@@ -546,9 +529,7 @@ function ReiduGUI:_HookDrag(f)
     f.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or
            i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            ds = i.Position
-            fs = self._mainFrame.Position
+            dragging = true; ds = i.Position; fs = self._mainFrame.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
@@ -571,13 +552,424 @@ function ReiduGUI:_HookDrag(f)
 end
 
 -- ============================================================
+-- SEARCH BAR  (new in v1.1)
+-- ============================================================
+function ReiduGUI:_BuildSearch()
+    -- Results overlay (same position/size as tab container)
+    local srFrame = Instance.new("ScrollingFrame")
+    srFrame.Size = UDim2.new(1,0,1,0)
+    srFrame.BackgroundTransparency = 1
+    srFrame.BorderSizePixel = 0
+    srFrame.ScrollBarThickness = 3
+    srFrame.ScrollBarImageColor3 = self:T("Accent")
+    srFrame.CanvasSize = UDim2.new(0,0,0,0)
+    srFrame.Visible = false
+    srFrame.ZIndex = 10
+    srFrame.Parent = self._tabContainer
+    local srLayout = Instance.new("UIListLayout", srFrame)
+    srLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    srLayout.Padding = UDim.new(0,4)
+    srLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        srFrame.CanvasSize = UDim2.new(0,0,0, srLayout.AbsoluteContentSize.Y + 15)
+    end)
+    local srPad = Instance.new("UIPadding", srFrame)
+    srPad.PaddingTop = UDim.new(0,8)
+    srPad.PaddingLeft = UDim.new(0,8)
+    srPad.PaddingRight = UDim.new(0,12)
+    self._searchResultsFrame = srFrame
+
+    -- Search TextBox
+    local sb = Instance.new("TextBox")
+    sb.PlaceholderText = "search features..."
+    sb.Text = ""
+    sb.Size = UDim2.new(0,456,0,24)
+    sb.Position = UDim2.new(0,116,0,44)
+    sb.BackgroundColor3 = self:T("Background")
+    sb.TextColor3 = Color3.fromRGB(235,232,255)
+    sb.PlaceholderColor3 = Color3.fromRGB(140,130,165)
+    sb.TextSize = 10
+    sb.Font = Enum.Font.Gotham
+    sb.TextXAlignment = Enum.TextXAlignment.Left
+    sb.BorderSizePixel = 0
+    sb.ClearTextOnFocus = false
+    sb.Parent = self._mainFrame
+    sb.ZIndex = 5
+    Instance.new("UICorner", sb).CornerRadius = UDim.new(0,5)
+    local sbPad = Instance.new("UIPadding", sb)
+    sbPad.PaddingLeft = UDim.new(0,8)
+    local sbStroke = Instance.new("UIStroke", sb)
+    sbStroke.Color = self:T("Outline")
+    sbStroke.Thickness = 0.5
+    self._searchBox = sb
+
+    sb.Focused:Connect(function()
+        Tween(sbStroke, TweenInfo.new(0.15), {Color = self:T("Accent")})
+    end)
+    sb.FocusLost:Connect(function()
+        if sb.Text == "" then
+            Tween(sbStroke, TweenInfo.new(0.15), {Color = self:T("Outline")})
+        end
+    end)
+
+    local function DoSearch(query)
+        for _, c in pairs(srFrame:GetChildren()) do
+            if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
+        end
+        query = query:lower():match("^%s*(.-)%s*$")
+        if query == "" then
+            srFrame.Visible = false
+            if self._lastActiveTab then self:_SwitchTab(self._lastActiveTab) end
+            return
+        end
+        srFrame.Visible = true
+        for _, t in ipairs(self._tabs) do t.frame.Visible = false end
+
+        local results = {}
+        for _, entry in ipairs(self._featureRegistry) do
+            if entry.labelLower:find(query, 1, true) then
+                table.insert(results, entry)
+            end
+        end
+
+        if #results == 0 then
+            local noRes = Instance.new("TextLabel")
+            noRes.Text = 'No results for "' .. query .. '"'
+            noRes.Size = UDim2.new(1,0,0,30)
+            noRes.BackgroundTransparency = 1
+            noRes.TextColor3 = Color3.fromRGB(110,105,135)
+            noRes.TextSize = 11; noRes.Font = Enum.Font.Gotham
+            noRes.TextXAlignment = Enum.TextXAlignment.Left
+            noRes.LayoutOrder = 1; noRes.Parent = srFrame
+            return
+        end
+
+        for i, entry in ipairs(results) do
+            local row = Instance.new("TextButton")
+            row.Size = UDim2.new(1,0,0,34)
+            row.BackgroundColor3 = self:T("Main")
+            row.BorderSizePixel = 0; row.LayoutOrder = i
+            row.Text = ""; row.AutoButtonColor = false
+            row.Parent = srFrame
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0,5)
+            local rs = Instance.new("UIStroke", row)
+            rs.Color = self:T("Outline"); rs.Thickness = 1
+
+            local nameLbl = Instance.new("TextLabel")
+            nameLbl.Text = entry.label
+            nameLbl.Size = UDim2.new(0.6,0,1,0)
+            nameLbl.Position = UDim2.new(0,10,0,0)
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.TextColor3 = Color3.fromRGB(210,205,235)
+            nameLbl.TextSize = 11; nameLbl.Font = Enum.Font.Gotham
+            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.Parent = row
+
+            local badge = Instance.new("TextLabel")
+            badge.Text = entry.tabName
+            badge.Size = UDim2.new(0,0,0,16)
+            badge.AutomaticSize = Enum.AutomaticSize.X
+            badge.AnchorPoint = Vector2.new(1,0.5)
+            badge.Position = UDim2.new(1,-6,0.5,0)
+            badge.BackgroundColor3 = self:T("Accent")
+            badge.TextColor3 = Color3.fromRGB(255,255,255)
+            badge.TextSize = 9; badge.Font = Enum.Font.GothamBold
+            badge.BorderSizePixel = 0; badge.Parent = row
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(0,3)
+            local bp = Instance.new("UIPadding", badge)
+            bp.PaddingLeft = UDim.new(0,5); bp.PaddingRight = UDim.new(0,5)
+
+            row.MouseEnter:Connect(function()
+                Tween(row, fast, {BackgroundColor3 = self:T("Background")})
+                rs.Color = self:T("Accent")
+            end)
+            row.MouseLeave:Connect(function()
+                Tween(row, fast, {BackgroundColor3 = self:T("Main")})
+                rs.Color = self:T("Outline")
+            end)
+
+            local capTab = entry.tabName
+            local capRow = entry.row
+            row.MouseButton1Click:Connect(function()
+                sb.Text = ""
+                srFrame.Visible = false
+                self._lastActiveTab = capTab
+                self:_SwitchTab(capTab)
+                if capRow and capRow.Parent then
+                    task.spawn(function()
+                        task.wait(0.05)
+                        for _ = 1, 2 do
+                            Tween(capRow, TweenInfo.new(0.12), {BackgroundColor3 = self:T("Accent")})
+                            task.wait(0.18)
+                            Tween(capRow, TweenInfo.new(0.12), {BackgroundColor3 = self:T("Main")})
+                            task.wait(0.18)
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+
+    sb:GetPropertyChangedSignal("Text"):Connect(function()
+        DoSearch(sb.Text)
+    end)
+end
+
+-- Internal: register a feature row for search
+function ReiduGUI:_RegisterFeature(label, section, row)
+    local tabName = "?"
+    pcall(function()
+        for _, t in ipairs(self._tabs) do
+            if section.Parent == t.frame then
+                tabName = t.name
+                break
+            end
+        end
+    end)
+    table.insert(self._featureRegistry, {
+        label      = label,
+        labelLower = label:lower(),
+        tabName    = tabName,
+        row        = row,
+    })
+end
+
+-- ============================================================
+-- FLOATING TOGGLE BUTTON  (new in v1.1)
+-- ============================================================
+function ReiduGUI:_BuildFloatingButton()
+    local label = self._title
+    local btn = Instance.new("TextButton")
+    btn.Text = label .. " ▲"
+    btn.Size = UDim2.new(0,90,0,24)
+    btn.Position = UDim2.new(0,12,1,-36)
+    btn.AnchorPoint = Vector2.new(0,1)
+    btn.BackgroundColor3 = HexToColor("141418")
+    btn.TextColor3 = Color3.fromRGB(180,140,255)
+    btn.TextSize = 11; btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0; btn.ZIndex = 200
+    btn.Parent = self._screenGui
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = HexToColor("7C5CBF"); stroke.Thickness = 1
+    self._floatingBtn = btn
+
+    local togDragging, togDragStart, togBtnStart = false, nil, nil
+    local wasDragged = false
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or
+           input.UserInputType == Enum.UserInputType.Touch then
+            togDragging = true; wasDragged = false
+            togDragStart = input.Position
+            togBtnStart  = btn.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not togDragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or
+           input.UserInputType == Enum.UserInputType.Touch then
+            local dx = input.Position.X - togDragStart.X
+            local dy = input.Position.Y - togDragStart.Y
+            if math.abs(dx) > 4 or math.abs(dy) > 4 then wasDragged = true end
+            btn.Position = UDim2.new(
+                togBtnStart.X.Scale, togBtnStart.X.Offset + dx,
+                togBtnStart.Y.Scale, togBtnStart.Y.Offset + dy)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or
+           input.UserInputType == Enum.UserInputType.Touch then
+            togDragging = false
+        end
+    end)
+
+    btn.MouseButton1Click:Connect(function()
+        if wasDragged then return end
+        self._mainFrame.Visible = not self._mainFrame.Visible
+        local visible = self._mainFrame.Visible
+        btn.Text   = label .. (visible and " ▲" or " ▼")
+        stroke.Color = visible and HexToColor("7C5CBF") or HexToColor("3A3A50")
+    end)
+    btn.MouseEnter:Connect(function()
+        Tween(btn, fast, {BackgroundColor3 = HexToColor("1E1E2A")})
+    end)
+    btn.MouseLeave:Connect(function()
+        Tween(btn, fast, {BackgroundColor3 = HexToColor("141418")})
+    end)
+end
+
+-- ============================================================
+-- COLOR PICKER POPUP  (new in v1.1)
+-- ============================================================
+function ReiduGUI:_BuildColorPicker()
+    -- Shared popup, shown/hidden per-row
+    local pf = Instance.new("Frame")
+    pf.Size = UDim2.new(0,260,0,196)
+    pf.AnchorPoint = Vector2.new(0.5,0.5)
+    pf.Position = UDim2.new(0.5,0,0.5,0)
+    pf.BackgroundColor3 = HexToColor("1A1A24")
+    pf.BorderSizePixel = 0
+    pf.ZIndex = 50
+    pf.Visible = false
+    pf.Parent = self._tabContainer
+    Instance.new("UICorner", pf).CornerRadius = UDim.new(0,8)
+    local pfStroke = Instance.new("UIStroke", pf)
+    pfStroke.Color = self:T("Accent"); pfStroke.Thickness = 1
+    self._pickerFrame = pf
+
+    local ptitle = Instance.new("TextLabel")
+    ptitle.Text = "Pick Color"
+    ptitle.Size = UDim2.new(1,-40,0,28); ptitle.Position = UDim2.new(0,10,0,4)
+    ptitle.BackgroundTransparency = 1; ptitle.TextColor3 = Color3.fromRGB(210,200,240)
+    ptitle.TextSize = 12; ptitle.Font = Enum.Font.GothamBold
+    ptitle.TextXAlignment = Enum.TextXAlignment.Left
+    ptitle.ZIndex = 51; ptitle.Parent = pf
+    self._pickerTitle = ptitle
+
+    local pclose = Instance.new("TextButton")
+    pclose.Text = "X"; pclose.Size = UDim2.new(0,22,0,22)
+    pclose.Position = UDim2.new(1,-26,0,4)
+    pclose.BackgroundColor3 = Color3.fromRGB(160,50,50)
+    pclose.TextColor3 = Color3.fromRGB(255,255,255)
+    pclose.TextSize = 10; pclose.Font = Enum.Font.GothamBold
+    pclose.BorderSizePixel = 0; pclose.ZIndex = 51; pclose.Parent = pf
+    Instance.new("UICorner", pclose).CornerRadius = UDim.new(0,4)
+
+    -- HSV sliders
+    self._pickerH = 0; self._pickerS = 1; self._pickerV = 1
+
+    local function MakeHSVSlider(labelChar, yPos, defaultVal)
+        local bg = Instance.new("Frame")
+        bg.Size = UDim2.new(1,-20,0,18); bg.Position = UDim2.new(0,10,0,yPos)
+        bg.BackgroundColor3 = HexToColor("2A2A38"); bg.BorderSizePixel = 0
+        bg.ZIndex = 51; bg.Parent = pf
+        Instance.new("UICorner", bg).CornerRadius = UDim.new(0,4)
+        local lc = Instance.new("TextLabel")
+        lc.Text = labelChar; lc.Size = UDim2.new(0,12,1,0)
+        lc.BackgroundTransparency = 1; lc.TextColor3 = Color3.fromRGB(170,160,200)
+        lc.TextSize = 9; lc.Font = Enum.Font.GothamBold; lc.ZIndex = 52; lc.Parent = bg
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new(defaultVal,0,1,0); fill.BackgroundColor3 = self:T("Accent")
+        fill.BorderSizePixel = 0; fill.ZIndex = 52; fill.Parent = bg
+        Instance.new("UICorner", fill).CornerRadius = UDim.new(0,4)
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0,12,0,12); knob.AnchorPoint = Vector2.new(0.5,0.5)
+        knob.Position = UDim2.new(defaultVal,0,0.5,0)
+        knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        knob.BorderSizePixel = 0; knob.ZIndex = 53; knob.Parent = bg
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(0.5,0)
+        return bg, fill, knob
+    end
+
+    local hTrack, hFill, hKnob = MakeHSVSlider("H", 36, 0)
+    local sTrack, sFill, sKnob = MakeHSVSlider("S", 62, 1)
+    local vTrack, vFill, vKnob = MakeHSVSlider("V", 88, 1)
+
+    -- Preview swatch
+    local preview = Instance.new("Frame")
+    preview.Size = UDim2.new(1,-20,0,32); preview.Position = UDim2.new(0,10,0,114)
+    preview.BackgroundColor3 = Color3.fromHSV(0,1,1); preview.BorderSizePixel = 0
+    preview.ZIndex = 51; preview.Parent = pf
+    Instance.new("UICorner", preview).CornerRadius = UDim.new(0,5)
+    local hexLbl = Instance.new("TextLabel")
+    hexLbl.Text = "#7C5CBF"; hexLbl.Size = UDim2.new(0.7,0,1,0)
+    hexLbl.BackgroundTransparency = 1; hexLbl.TextColor3 = Color3.fromRGB(220,215,240)
+    hexLbl.TextSize = 11; hexLbl.Font = Enum.Font.Code
+    hexLbl.ZIndex = 52; hexLbl.Parent = preview
+    self._pickerPreview = preview
+    self._pickerHexLbl  = hexLbl
+
+    -- Apply button
+    local applyBtn = Instance.new("TextButton")
+    applyBtn.Text = "Apply"
+    applyBtn.Size = UDim2.new(1,-20,0,22); applyBtn.Position = UDim2.new(0,10,0,154)
+    applyBtn.BackgroundColor3 = self:T("Accent"); applyBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    applyBtn.TextSize = 11; applyBtn.Font = Enum.Font.GothamBold
+    applyBtn.BorderSizePixel = 0; applyBtn.ZIndex = 51; applyBtn.Parent = pf
+    Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0,5)
+
+    -- Update preview colour
+    local function RefreshPreview()
+        local col = Color3.fromHSV(self._pickerH, self._pickerS, self._pickerV)
+        preview.BackgroundColor3 = col
+        hexLbl.Text = "#" .. ColorToHex(col)
+        hFill.BackgroundColor3 = Color3.fromHSV(self._pickerH, 1, 1)
+    end
+
+    -- Drag helper for each slider track
+    local function HookHSVSlider(track, fill, knob, onChange)
+        local sliding = false
+        local function SetX(px)
+            local r = math.clamp(
+                (px - track.AbsolutePosition.X - 14) / (track.AbsoluteSize.X - 14), 0, 1)
+            fill.Size = UDim2.new(r,0,1,0); knob.Position = UDim2.new(r,0,0.5,0)
+            onChange(r); RefreshPreview()
+        end
+        local function MB1(i) return i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch end
+        local function Mv(i)  return i.UserInputType==Enum.UserInputType.MouseMovement  or i.UserInputType==Enum.UserInputType.Touch end
+        track.InputBegan:Connect(function(i)  if MB1(i) then sliding=true; SetX(i.Position.X) end end)
+        track.InputEnded:Connect(function(i)  if MB1(i) then sliding=false end end)
+        track.InputChanged:Connect(function(i) if sliding and Mv(i) then SetX(i.Position.X) end end)
+        UserInputService.InputChanged:Connect(function(i) if sliding and Mv(i) then SetX(i.Position.X) end end)
+        UserInputService.InputEnded:Connect(function(i)   if MB1(i) and sliding then sliding=false end end)
+    end
+
+    HookHSVSlider(hTrack, hFill, hKnob, function(v) self._pickerH = v end)
+    HookHSVSlider(sTrack, sFill, sKnob, function(v) self._pickerS = v end)
+    HookHSVSlider(vTrack, vFill, vKnob, function(v) self._pickerV = v end)
+
+    self._pickerHTrack = hTrack; self._pickerHFill = hFill; self._pickerHKnob = hKnob
+    self._pickerSTrack = sTrack; self._pickerSFill = sFill; self._pickerSKnob = sKnob
+    self._pickerVTrack = vTrack; self._pickerVFill = vFill; self._pickerVKnob = vKnob
+    self._pickerCallback = nil
+
+    -- Close
+    pclose.MouseButton1Click:Connect(function()
+        pf.Visible = false
+        self._pickerCallback = nil
+    end)
+
+    -- Apply
+    applyBtn.MouseButton1Click:Connect(function()
+        local col = Color3.fromHSV(self._pickerH, self._pickerS, self._pickerV)
+        local hex = ColorToHex(col)
+        if self._pickerApplyFn then self._pickerApplyFn(col, hex) end
+        if self._pickerCallback then self._pickerCallback(hex) end
+        pf.Visible = false
+        self._pickerCallback = nil
+        self._pickerApplyFn  = nil
+    end)
+end
+
+-- Internal: open the color picker pointing to a hex default
+function ReiduGUI:_OpenColorPicker(title, defaultHex, applyFn, callback)
+    local col = HexToColor(defaultHex or "7C5CBF")
+    self._pickerH, self._pickerS, self._pickerV = Color3.toHSV(col)
+
+    -- Sync slider positions
+    local function SyncSlider(fill, knob, v)
+        fill.Size = UDim2.new(v,0,1,0); knob.Position = UDim2.new(v,0,0.5,0)
+    end
+    SyncSlider(self._pickerHFill, self._pickerHKnob, self._pickerH)
+    SyncSlider(self._pickerSFill, self._pickerSKnob, self._pickerS)
+    SyncSlider(self._pickerVFill, self._pickerVKnob, self._pickerV)
+
+    self._pickerPreview.BackgroundColor3 = col
+    self._pickerHexLbl.Text = "#" .. ColorToHex(col)
+    self._pickerTitle.Text  = title or "Pick Color"
+    self._pickerApplyFn  = applyFn
+    self._pickerCallback = callback
+    self._pickerFrame.Visible = true
+end
+
+-- ============================================================
 -- TOAST SYSTEM
 -- ============================================================
 function ReiduGUI:_BuildToast()
     local tf = Instance.new("Frame")
     tf.Size = UDim2.new(0,240,0,36)
     tf.AnchorPoint = Vector2.new(1,0)
-    tf.Position = UDim2.new(1,-10,1,60)  -- hidden below screen
+    tf.Position = UDim2.new(1,-10,1,60)
     tf.ClipsDescendants = false
     tf.Active = false
     tf.BackgroundColor3 = HexToColor("1A1A28")
@@ -598,24 +990,18 @@ function ReiduGUI:_BuildToast()
     self._toastLabel = lbl
 
     local tbt = Instance.new("Frame")
-    tbt.Size = UDim2.new(1,-16,0,3)
-    tbt.Position = UDim2.new(0,8,0,28)
-    tbt.BackgroundColor3 = HexToColor("2A2A38")
-    tbt.BorderSizePixel = 0; tbt.ZIndex = 201; tbt.Parent = tf
+    tbt.Size = UDim2.new(1,-16,0,3); tbt.Position = UDim2.new(0,8,0,28)
+    tbt.BackgroundColor3 = HexToColor("2A2A38"); tbt.BorderSizePixel = 0
+    tbt.ZIndex = 201; tbt.Parent = tf
     Instance.new("UICorner", tbt).CornerRadius = UDim.new(0.5,0)
 
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1,0,1,0)
-    bar.BackgroundColor3 = self:T("Accent")
+    bar.Size = UDim2.new(1,0,1,0); bar.BackgroundColor3 = self:T("Accent")
     bar.BorderSizePixel = 0; bar.ZIndex = 202; bar.Parent = tbt
     Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5,0)
     self._toastBar = bar
 end
 
--- Public: show a toast notification
--- isEnabled = true  => green  "[ON] label"
--- isEnabled = false => red    "[OFF] label"
--- isEnabled = nil   => purple "[?] label"
 function ReiduGUI:Toast(text, isEnabled)
     table.insert(self._toastQueue, {text=text, enabled=isEnabled})
     if self._toastRunning then return end
@@ -636,17 +1022,13 @@ function ReiduGUI:Toast(text, isEnabled)
             self._toastStroke.Color = col
             self._toastBar.BackgroundColor3 = col
             self._toastBar.Size = UDim2.new(1,0,1,0)
-            -- Slide in (60px above bottom-right, below Roblox top-bar)
             Tween(self._toastFrame,
                 TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
                 {Position = UDim2.new(1,-10,1,-46)})
             task.wait(0.15)
-            -- Deplete bar
-            Tween(self._toastBar,
-                TweenInfo.new(1.4, Enum.EasingStyle.Linear),
+            Tween(self._toastBar, TweenInfo.new(1.4, Enum.EasingStyle.Linear),
                 {Size = UDim2.new(0,0,1,0)})
             task.wait(1.4)
-            -- Slide out
             Tween(self._toastFrame,
                 TweenInfo.new(0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
                 {Position = UDim2.new(1,-10,1,60)})
@@ -660,7 +1042,6 @@ end
 -- AMBIENT ANIMATIONS
 -- ============================================================
 function ReiduGUI:_BuildAmbient()
-    -- Title colour cycle
     task.spawn(function()
         local cols = {
             Color3.fromRGB(220,200,255), Color3.fromRGB(180,130,255),
@@ -673,7 +1054,6 @@ function ReiduGUI:_BuildAmbient()
             Tween(self._titleLabel, TweenInfo.new(0.9, Enum.EasingStyle.Sine), {TextColor3 = cols[i]})
         end
     end)
-    -- Badge pulse
     task.spawn(function()
         while self._badge do
             Tween(self._badge, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
@@ -684,7 +1064,6 @@ function ReiduGUI:_BuildAmbient()
             task.wait(0.6)
         end
     end)
-    -- Accent gradient rotation
     task.spawn(function()
         local r = 0
         while self._accentGrad do
@@ -698,8 +1077,6 @@ end
 -- ============================================================
 -- LIVE STATUS BAR
 -- ============================================================
--- Returns a setter function: local setFn = win:AddStatusLabel("Coins: 0", 1)
--- Call setFn("Coins: 1.2M") to update the text later.
 function ReiduGUI:AddStatusLabel(default, order)
     self._liveLblIdx = (self._liveLblIdx or 0) + 1
     local lbl = Instance.new("TextLabel")
@@ -717,12 +1094,10 @@ end
 -- ============================================================
 -- TAB
 -- ============================================================
--- Returns a tab object. Pass it to AddSection(), etc.
 function ReiduGUI:AddTab(name, icon)
     local order = #self._tabs + 1
     icon = icon or "•"
 
-    -- Nav button
     local btn = Instance.new("TextButton")
     btn.Text = icon .. "  " .. name
     btn.Size = UDim2.new(1,0,0,34)
@@ -736,7 +1111,6 @@ function ReiduGUI:AddTab(name, icon)
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0,5)
     local bp = Instance.new("UIPadding", btn); bp.PaddingLeft = UDim.new(0,8)
 
-    -- Active indicator
     local acc = Instance.new("Frame")
     acc.Size = UDim2.new(0,3,0,0)
     acc.Position = UDim2.new(0,-6,0.15,0)
@@ -755,7 +1129,6 @@ function ReiduGUI:AddTab(name, icon)
         end
     end)
 
-    -- Scroll frame
     local frame = Instance.new("ScrollingFrame")
     frame.Name = name
     frame.Size = UDim2.new(1,0,1,0)
@@ -776,10 +1149,15 @@ function ReiduGUI:AddTab(name, icon)
     local tabObj = {name=name, frame=frame, btn=btn, acc=acc, _sectionCount=0}
     table.insert(self._tabs, tabObj)
 
-    btn.MouseButton1Click:Connect(function() self:_SwitchTab(name) end)
+    btn.MouseButton1Click:Connect(function()
+        self._lastActiveTab = name
+        self:_SwitchTab(name)
+    end)
 
-    -- Auto-activate first tab
-    if #self._tabs == 1 then self:_SwitchTab(name) end
+    if #self._tabs == 1 then
+        self._lastActiveTab = name
+        self:_SwitchTab(name)
+    end
 
     return tabObj
 end
@@ -812,7 +1190,6 @@ end
 -- ============================================================
 -- SECTION
 -- ============================================================
--- Returns a section object. Pass it to AddToggle(), AddSlider(), etc.
 function ReiduGUI:AddSection(tab, title)
     tab._sectionCount = (tab._sectionCount or 0) + 1
 
@@ -826,7 +1203,6 @@ function ReiduGUI:AddSection(tab, title)
     sl.SortOrder = Enum.SortOrder.LayoutOrder
     sl.Padding = UDim.new(0,4)
 
-    -- Section header
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1,0,0,22)
     header.BackgroundTransparency = 1
@@ -847,13 +1223,11 @@ function ReiduGUI:AddSection(tab, title)
     return section
 end
 
--- Internal: next child order inside a section
 local function NextRow(s)
     s._rowCount = (s._rowCount or 0) + 1
     return s._rowCount
 end
 
--- Internal: basic row frame
 function ReiduGUI:_Row(section, h)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1,0,0,h or 30)
@@ -868,7 +1242,6 @@ end
 -- ============================================================
 -- TOGGLE
 -- ============================================================
--- Returns a controller: { Set(bool), Get() -> bool }
 function ReiduGUI:AddToggle(section, label, default, callback)
     local row = self:_Row(section)
 
@@ -881,15 +1254,12 @@ function ReiduGUI:AddToggle(section, label, default, callback)
 
     local bg = Instance.new("TextButton")
     bg.Text = ""; bg.AutoButtonColor = false
-    bg.Size = UDim2.new(0,36,0,18)
-    bg.Position = UDim2.new(1,-46,0.5,-9)
-    bg.BackgroundColor3 = self:T("Outline")
-    bg.BorderSizePixel = 0; bg.Parent = row
+    bg.Size = UDim2.new(0,36,0,18); bg.Position = UDim2.new(1,-46,0.5,-9)
+    bg.BackgroundColor3 = self:T("Outline"); bg.BorderSizePixel = 0; bg.Parent = row
     Instance.new("UICorner", bg).CornerRadius = UDim.new(0.5,0)
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0,14,0,14)
-    knob.Position = UDim2.new(0,2,0.5,-7)
+    knob.Size = UDim2.new(0,14,0,14); knob.Position = UDim2.new(0,2,0.5,-7)
     knob.BackgroundColor3 = Color3.fromRGB(160,155,185)
     knob.BorderSizePixel = 0; knob.Parent = bg
     Instance.new("UICorner", knob).CornerRadius = UDim.new(0.5,0)
@@ -906,13 +1276,13 @@ function ReiduGUI:AddToggle(section, label, default, callback)
     Refresh(value)
 
     bg.MouseButton1Click:Connect(function()
-        value = not value
-        Refresh(value)
+        value = not value; Refresh(value)
         self:Toast(label, value)
         if callback then callback(value) end
     end)
 
-    -- Controller
+    self:_RegisterFeature(label, section, row)
+
     return {
         Set = function(_, v) value = v; Refresh(v) end,
         Get = function(_)    return value end,
@@ -922,7 +1292,6 @@ end
 -- ============================================================
 -- SLIDER
 -- ============================================================
--- Returns a controller: { Set(number), Get() -> number }
 function ReiduGUI:AddSlider(section, label, min, max, default, callback)
     local row = self:_Row(section, 46)
     row.Size = UDim2.new(1,0,0,46)
@@ -975,12 +1344,14 @@ function ReiduGUI:AddSlider(section, label, min, max, default, callback)
     end
 
     local function MB1(i) return i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch end
-    local function Mv(i)  return i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch end
-    track.InputBegan:Connect(function(i) if MB1(i) then sliding=true; Tween(knob,TweenInfo.new(0.12),{Size=UDim2.new(0,16,0,16)}); ApplyX(i.Position.X) end end)
-    track.InputEnded:Connect(function(i) if MB1(i) then sliding=false; Tween(knob,TweenInfo.new(0.12),{Size=UDim2.new(0,12,0,12)}) end end)
+    local function Mv(i)  return i.UserInputType==Enum.UserInputType.MouseMovement  or i.UserInputType==Enum.UserInputType.Touch end
+    track.InputBegan:Connect(function(i)  if MB1(i) then sliding=true; Tween(knob,TweenInfo.new(0.12),{Size=UDim2.new(0,16,0,16)}); ApplyX(i.Position.X) end end)
+    track.InputEnded:Connect(function(i)  if MB1(i) then sliding=false; Tween(knob,TweenInfo.new(0.12),{Size=UDim2.new(0,12,0,12)}) end end)
     track.InputChanged:Connect(function(i) if sliding and Mv(i) then ApplyX(i.Position.X) end end)
-    UserInputService.InputEnded:Connect(function(i) if MB1(i) and sliding then sliding=false; Tween(knob,TweenInfo.new(0.12),{Size=UDim2.new(0,12,0,12)}) end end)
+    UserInputService.InputEnded:Connect(function(i)  if MB1(i) and sliding then sliding=false; Tween(knob,TweenInfo.new(0.12),{Size=UDim2.new(0,12,0,12)}) end end)
     UserInputService.InputChanged:Connect(function(i) if sliding and Mv(i) then ApplyX(i.Position.X) end end)
+
+    self:_RegisterFeature(label, section, row)
 
     return {
         Set = function(_, v)
@@ -996,7 +1367,6 @@ end
 -- ============================================================
 -- DROPDOWN  (single select)
 -- ============================================================
--- Returns a controller: { Set(string), Get() -> string }
 function ReiduGUI:AddDropdown(section, label, options, default, callback)
     local con = Instance.new("Frame")
     con.Size = UDim2.new(1,0,0,30); con.BackgroundColor3 = self:T("Main")
@@ -1050,6 +1420,8 @@ function ReiduGUI:AddDropdown(section, label, options, default, callback)
         open = not open; dl.Visible = open; arrow.Text = open and "^" or "v"
     end)
 
+    self:_RegisterFeature(label, section, con)
+
     return {
         Set = function(_, v) value = v; Refresh() end,
         Get = function(_)    return value end,
@@ -1059,9 +1431,6 @@ end
 -- ============================================================
 -- MULTI-DROPDOWN  (multi select)
 -- ============================================================
--- default = {"Option A", "Option B"}
--- callback fires with array of selected strings
--- Returns controller: { Set(array), Get() -> array }
 function ReiduGUI:AddMultiDropdown(section, label, options, default, callback)
     local con = Instance.new("Frame")
     con.Size = UDim2.new(1,0,0,30); con.BackgroundColor3 = self:T("Main")
@@ -1090,7 +1459,6 @@ function ReiduGUI:AddMultiDropdown(section, label, options, default, callback)
     dl.Size = UDim2.new(1,0,0,0); dl.Parent = con
     Instance.new("UIListLayout", dl).SortOrder = Enum.SortOrder.LayoutOrder
 
-    -- selected = set (dict) for O(1) lookup
     local selected = {}
     if default then for _,v in ipairs(default) do selected[v]=true end end
 
@@ -1134,6 +1502,8 @@ function ReiduGUI:AddMultiDropdown(section, label, options, default, callback)
         open = not open; dl.Visible = open; arrow.Text = open and "^" or "v"
     end)
 
+    self:_RegisterFeature(label, section, con)
+
     return {
         Set = function(_, arr)
             selected = {}
@@ -1154,7 +1524,6 @@ end
 -- ============================================================
 -- BUTTON
 -- ============================================================
--- color is optional, defaults to white text
 function ReiduGUI:AddButton(section, label, callback, color)
     local row = self:_Row(section)
     local btn = Instance.new("TextButton")
@@ -1168,14 +1537,15 @@ function ReiduGUI:AddButton(section, label, callback, color)
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = self:T("Outline"); stroke.Thickness = 1
     btn.MouseButton1Click:Connect(function() if callback then callback() end end)
-    btn.MouseEnter:Connect(function()  stroke.Color = self:T("Accent") end)
-    btn.MouseLeave:Connect(function()  stroke.Color = self:T("Outline") end)
+    btn.MouseEnter:Connect(function() stroke.Color = self:T("Accent") end)
+    btn.MouseLeave:Connect(function() stroke.Color = self:T("Outline") end)
+
+    self:_RegisterFeature(label, section, row)
 end
 
 -- ============================================================
 -- TEXT INPUT
 -- ============================================================
--- Returns controller: { Set(string), Get() -> string }
 function ReiduGUI:AddTextInput(section, label, placeholder, default, callback)
     local row = self:_Row(section, 46)
     row.Size = UDim2.new(1,0,0,46)
@@ -1200,6 +1570,8 @@ function ReiduGUI:AddTextInput(section, label, placeholder, default, callback)
     local ip = Instance.new("UIPadding", box); ip.PaddingLeft = UDim.new(0,6)
     box.FocusLost:Connect(function() if callback then callback(box.Text) end end)
 
+    self:_RegisterFeature(label, section, row)
+
     return {
         Set = function(_, v) box.Text = v or "" end,
         Get = function(_)    return box.Text end,
@@ -1207,9 +1579,82 @@ function ReiduGUI:AddTextInput(section, label, placeholder, default, callback)
 end
 
 -- ============================================================
--- LABEL  (info / warning text row)
+-- COLOR PICKER ROW  (new in v1.1)
 -- ============================================================
--- Returns controller: { Set(string), SetColor(Color3) }
+-- Creates a row with a colour swatch and label.
+-- Clicking the swatch opens the shared HSV picker popup.
+-- callback(hex) fires when Apply is pressed.
+-- Returns controller: { Set(hex), Get() -> hex }
+function ReiduGUI:AddColorPicker(section, label, defaultHex, callback)
+    defaultHex = (defaultHex or "7C5CBF"):gsub("#","")
+    local currentHex = defaultHex
+
+    local row = self:_Row(section)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Text = label; lbl.Size = UDim2.new(0.55,0,1,0)
+    lbl.Position = UDim2.new(0,10,0,0); lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.fromRGB(200,195,220)
+    lbl.TextSize = 11; lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+
+    -- Hex label
+    local hexLbl = Instance.new("TextLabel")
+    hexLbl.Text = "#"..currentHex
+    hexLbl.Size = UDim2.new(0.28,0,0,18)
+    hexLbl.Position = UDim2.new(0.55,0,0.5,-9)
+    hexLbl.BackgroundTransparency = 1
+    hexLbl.TextColor3 = Color3.fromRGB(140,130,170)
+    hexLbl.TextSize = 10; hexLbl.Font = Enum.Font.Code
+    hexLbl.TextXAlignment = Enum.TextXAlignment.Left; hexLbl.Parent = row
+
+    -- Swatch button
+    local swatch = Instance.new("TextButton")
+    swatch.Text = ""; swatch.AutoButtonColor = false
+    swatch.Size = UDim2.new(0,22,0,22)
+    swatch.Position = UDim2.new(1,-32,0.5,-11)
+    swatch.BackgroundColor3 = HexToColor(currentHex)
+    swatch.BorderSizePixel = 0; swatch.Parent = row
+    Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5,0)
+    local swStroke = Instance.new("UIStroke", swatch)
+    swStroke.Color = Color3.fromRGB(100,80,150); swStroke.Thickness = 1
+
+    swatch.MouseEnter:Connect(function()
+        Tween(swStroke, TweenInfo.new(0.15), {Color=self:T("Accent"), Thickness=2})
+    end)
+    swatch.MouseLeave:Connect(function()
+        Tween(swStroke, TweenInfo.new(0.15), {Color=Color3.fromRGB(100,80,150), Thickness=1})
+    end)
+
+    swatch.MouseButton1Click:Connect(function()
+        self:_OpenColorPicker(
+            "Color: " .. label,
+            currentHex,
+            function(col, hex) -- applyFn
+                currentHex = hex
+                swatch.BackgroundColor3 = col
+                hexLbl.Text = "#"..hex
+            end,
+            callback
+        )
+    end)
+
+    self:_RegisterFeature(label, section, row)
+
+    return {
+        Set = function(_, hex)
+            hex = hex:gsub("#","")
+            currentHex = hex
+            swatch.BackgroundColor3 = HexToColor(hex)
+            hexLbl.Text = "#"..hex
+        end,
+        Get = function(_) return currentHex end,
+    }
+end
+
+-- ============================================================
+-- LABEL
+-- ============================================================
 function ReiduGUI:AddLabel(section, text, color)
     local row = self:_Row(section)
     local lbl = Instance.new("TextLabel")
@@ -1238,7 +1683,7 @@ function ReiduGUI:AddSeparator(section)
 end
 
 -- ============================================================
--- THEME  (change at runtime)
+-- THEME
 -- ============================================================
 function ReiduGUI:SetTheme(key, hex)
     self._theme[key] = hex:gsub("#","")
