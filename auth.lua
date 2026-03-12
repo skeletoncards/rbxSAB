@@ -101,69 +101,49 @@ local function ShowKeyGui()
     stroke.Color = Color3.fromRGB(110, 55, 200)
     stroke.Thickness = 1.5
 
-    -- Coloured header band at the top
-    local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 52)
-    header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(22, 16, 38)
-    header.BorderSizePixel = 0
-    header.Parent = card
-    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
-    -- Bottom corners square so it blends into the card body
-    local headerCover = Instance.new("Frame")
-    headerCover.Size = UDim2.new(1, 0, 0, 14)
-    headerCover.Position = UDim2.new(0, 0, 1, -14)
-    headerCover.BackgroundColor3 = Color3.fromRGB(22, 16, 38)
-    headerCover.BorderSizePixel = 0
-    headerCover.Parent = header
-
-    -- Gradient shimmer across header
-    local hGrad = Instance.new("UIGradient", header)
-    hGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(18, 10, 38)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 22, 72)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(18, 10, 38)),
-    })
-    hGrad.Rotation = 90
-
-    -- Slowly rotate the gradient for a subtle shimmer
-    task.spawn(function()
-        local r = 0
-        while gui.Parent do
-            task.wait(0.05)
-            r = (r + 0.5) % 360
-            hGrad.Rotation = r
-        end
-    end)
-
     -- Title
     local title = Instance.new("TextLabel")
     title.Text = "reidu's scripts"
-    title.Size = UDim2.new(1, -20, 0, 28)
-    title.Position = UDim2.new(0, 10, 0, 5)
+    title.Size = UDim2.new(1, -20, 0, 32)
+    title.Position = UDim2.new(0, 10, 0, 14)
     title.BackgroundTransparency = 1
-    title.TextColor3 = Color3.fromRGB(210, 180, 255)
-    title.TextSize = 16
+    title.TextColor3 = Color3.fromRGB(215, 185, 255)
+    title.TextSize = 20
     title.Font = Enum.Font.GothamBold
     title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = header
+    title.Parent = card
 
-    local subtitle = Instance.new("TextLabel")
-    subtitle.Text = "Key Verification"
-    subtitle.Size = UDim2.new(1, -20, 0, 16)
-    subtitle.Position = UDim2.new(0, 10, 0, 30)
-    subtitle.BackgroundTransparency = 1
-    subtitle.TextColor3 = Color3.fromRGB(100, 80, 150)
-    subtitle.TextSize = 10
-    subtitle.Font = Enum.Font.Gotham
-    subtitle.TextXAlignment = Enum.TextXAlignment.Center
-    subtitle.Parent = header
+    -- Glowing underline beneath the title
+    local glow = Instance.new("Frame")
+    glow.Size = UDim2.new(0, 120, 0, 2)
+    glow.AnchorPoint = Vector2.new(0.5, 0)
+    glow.Position = UDim2.new(0.5, 0, 0, 48)
+    glow.BackgroundColor3 = Color3.fromRGB(130, 65, 240)
+    glow.BorderSizePixel = 0
+    glow.Parent = card
+    Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
+    local glowGrad = Instance.new("UIGradient", glow)
+    glowGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(12, 12, 18)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 90, 255)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(12, 12, 18)),
+    })
 
-    -- Thin accent divider line below header
+    -- Pulse the underline width
+    task.spawn(function()
+        while gui.Parent do
+            TweenService:Create(glow, TweenInfo.new(1.4, Enum.EasingStyle.Sine), {Size = UDim2.new(0, 180, 0, 2)}):Play()
+            task.wait(1.4)
+            TweenService:Create(glow, TweenInfo.new(1.4, Enum.EasingStyle.Sine), {Size = UDim2.new(0, 100, 0, 2)}):Play()
+            task.wait(1.4)
+        end
+    end)
+
+    -- Thin full-width divider below title
     local divider = Instance.new("Frame")
     divider.Size = UDim2.new(1, -40, 0, 1)
-    divider.Position = UDim2.new(0, 20, 0, 52)
-    divider.BackgroundColor3 = Color3.fromRGB(60, 35, 110)
+    divider.Position = UDim2.new(0, 20, 0, 57)
+    divider.BackgroundColor3 = Color3.fromRGB(45, 28, 82)
     divider.BorderSizePixel = 0
     divider.Parent = card
 
