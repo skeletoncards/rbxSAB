@@ -1,3 +1,4 @@
+-- ============================================================
 -- reidu's scripts — Auth Wrapper v8.2
 -- Verifies key then loads main script from GitHub
 -- ============================================================
@@ -77,86 +78,156 @@ local function ShowKeyGui()
         gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
 
+    -- Blurred dark overlay
     local overlay = Instance.new("Frame")
     overlay.Size = UDim2.new(1, 0, 1, 0)
-    overlay.BackgroundColor3 = Color3.fromRGB(5, 5, 8)
-    overlay.BackgroundTransparency = 0.35
+    overlay.BackgroundColor3 = Color3.fromRGB(4, 4, 8)
+    overlay.BackgroundTransparency = 0.3
     overlay.BorderSizePixel = 0
     overlay.Parent = gui
 
+    -- Main card — taller to breathe
     local card = Instance.new("Frame")
-    card.Size = UDim2.new(0, 360, 0, 220)
+    card.Size = UDim2.new(0, 380, 0, 270)
     card.AnchorPoint = Vector2.new(0.5, 0.5)
-    card.Position = UDim2.new(0.5, 0, 0.6, 0)
-    card.BackgroundColor3 = Color3.fromRGB(14, 14, 20)
+    card.Position = UDim2.new(0.5, 0, 0.65, 0)
+    card.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     card.BorderSizePixel = 0
     card.Parent = gui
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 12)
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 14)
+
+    -- Outer glow stroke (animated later)
     local stroke = Instance.new("UIStroke", card)
-    stroke.Color = Color3.fromRGB(100, 60, 180)
+    stroke.Color = Color3.fromRGB(110, 55, 200)
     stroke.Thickness = 1.5
 
-    TweenService:Create(card, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Position = UDim2.new(0.5, 0, 0.5, 0)
-    }):Play()
+    -- Coloured header band at the top
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 52)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.BackgroundColor3 = Color3.fromRGB(22, 16, 38)
+    header.BorderSizePixel = 0
+    header.Parent = card
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
+    -- Bottom corners square so it blends into the card body
+    local headerCover = Instance.new("Frame")
+    headerCover.Size = UDim2.new(1, 0, 0, 14)
+    headerCover.Position = UDim2.new(0, 0, 1, -14)
+    headerCover.BackgroundColor3 = Color3.fromRGB(22, 16, 38)
+    headerCover.BorderSizePixel = 0
+    headerCover.Parent = header
 
-    local function MakeLabel(text, yPos, size, color, font)
-        local l = Instance.new("TextLabel")
-        l.Text = text
-        l.Size = UDim2.new(1, -20, 0, size or 20)
-        l.Position = UDim2.new(0, 10, 0, yPos)
-        l.BackgroundTransparency = 1
-        l.TextColor3 = color or Color3.fromRGB(200, 195, 220)
-        l.TextSize = size or 12
-        l.Font = font or Enum.Font.Gotham
-        l.TextXAlignment = Enum.TextXAlignment.Center
-        l.TextWrapped = true
-        l.Parent = card
-        return l
-    end
+    -- Gradient shimmer across header
+    local hGrad = Instance.new("UIGradient", header)
+    hGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(18, 10, 38)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 22, 72)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(18, 10, 38)),
+    })
+    hGrad.Rotation = 90
 
-    MakeLabel("reidu's scripts — Enter Key", 14, 14, Color3.fromRGB(200, 170, 255), Enum.Font.GothamBold)
+    -- Slowly rotate the gradient for a subtle shimmer
+    task.spawn(function()
+        local r = 0
+        while gui.Parent do
+            task.wait(0.05)
+            r = (r + 0.5) % 360
+            hGrad.Rotation = r
+        end
+    end)
 
-    -- FIX 1: No more !getkey reference
-    local sub = MakeLabel(
-        "Press  Get Key  in the Discord server to receive your key.",
-        36, 10, Color3.fromRGB(100, 95, 130)
-    )
-    sub.Size = UDim2.new(1, -20, 0, 28)
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Text = "reidu's scripts"
+    title.Size = UDim2.new(1, -20, 0, 28)
+    title.Position = UDim2.new(0, 10, 0, 5)
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.fromRGB(210, 180, 255)
+    title.TextSize = 16
+    title.Font = Enum.Font.GothamBold
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.Parent = header
 
-    -- FIX 2: Pure TextLabel — auto-detected from LocalPlayer, cannot be edited
-    local idCaptionLabel = Instance.new("TextLabel")
-    idCaptionLabel.Text = "Your Roblox ID (auto-detected)"
-    idCaptionLabel.Size = UDim2.new(1, -20, 0, 12)
-    idCaptionLabel.Position = UDim2.new(0, 10, 0, 57)
-    idCaptionLabel.BackgroundTransparency = 1
-    idCaptionLabel.TextColor3 = Color3.fromRGB(70, 65, 95)
-    idCaptionLabel.TextSize = 9
-    idCaptionLabel.Font = Enum.Font.Gotham
-    idCaptionLabel.TextXAlignment = Enum.TextXAlignment.Left
-    idCaptionLabel.Parent = card
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Text = "Key Verification"
+    subtitle.Size = UDim2.new(1, -20, 0, 16)
+    subtitle.Position = UDim2.new(0, 10, 0, 30)
+    subtitle.BackgroundTransparency = 1
+    subtitle.TextColor3 = Color3.fromRGB(100, 80, 150)
+    subtitle.TextSize = 10
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextXAlignment = Enum.TextXAlignment.Center
+    subtitle.Parent = header
 
-    local idDisplay = Instance.new("TextLabel")  -- TextLabel, NOT TextBox
-    idDisplay.Text = UserId                       -- locked to LocalPlayer.UserId
-    idDisplay.Size = UDim2.new(1, -30, 0, 26)
-    idDisplay.Position = UDim2.new(0, 15, 0, 68)
-    idDisplay.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    idDisplay.TextColor3 = Color3.fromRGB(180, 140, 255)
+    -- Thin accent divider line below header
+    local divider = Instance.new("Frame")
+    divider.Size = UDim2.new(1, -40, 0, 1)
+    divider.Position = UDim2.new(0, 20, 0, 52)
+    divider.BackgroundColor3 = Color3.fromRGB(60, 35, 110)
+    divider.BorderSizePixel = 0
+    divider.Parent = card
+
+    -- Instruction text
+    local sub = Instance.new("TextLabel")
+    sub.Text = "Press  Get Key  in the Discord server to get your key."
+    sub.Size = UDim2.new(1, -30, 0, 26)
+    sub.Position = UDim2.new(0, 15, 0, 62)
+    sub.BackgroundTransparency = 1
+    sub.TextColor3 = Color3.fromRGB(105, 90, 140)
+    sub.TextSize = 10
+    sub.Font = Enum.Font.Gotham
+    sub.TextXAlignment = Enum.TextXAlignment.Center
+    sub.TextWrapped = true
+    sub.Parent = card
+
+    -- ── Roblox ID row ─────────────────────────────────────────
+    local idCaption = Instance.new("TextLabel")
+    idCaption.Text = "ROBLOX ID  •  auto-detected"
+    idCaption.Size = UDim2.new(1, -30, 0, 11)
+    idCaption.Position = UDim2.new(0, 15, 0, 95)
+    idCaption.BackgroundTransparency = 1
+    idCaption.TextColor3 = Color3.fromRGB(80, 65, 115)
+    idCaption.TextSize = 9
+    idCaption.Font = Enum.Font.GothamBold
+    idCaption.TextXAlignment = Enum.TextXAlignment.Left
+    idCaption.Parent = card
+
+    local idDisplay = Instance.new("TextLabel")   -- TextLabel — cannot be focused or edited
+    idDisplay.Text = UserId
+    idDisplay.Size = UDim2.new(1, -30, 0, 28)
+    idDisplay.Position = UDim2.new(0, 15, 0, 108)
+    idDisplay.BackgroundColor3 = Color3.fromRGB(18, 14, 30)
+    idDisplay.TextColor3 = Color3.fromRGB(170, 130, 255)
     idDisplay.TextSize = 11
     idDisplay.Font = Enum.Font.Code
     idDisplay.TextXAlignment = Enum.TextXAlignment.Center
     idDisplay.BorderSizePixel = 0
     idDisplay.Parent = card
     Instance.new("UICorner", idDisplay).CornerRadius = UDim.new(0, 6)
+    local idStroke = Instance.new("UIStroke", idDisplay)
+    idStroke.Color = Color3.fromRGB(50, 35, 85)
+    idStroke.Thickness = 1
 
-    -- Key input box
+    -- ── Key input ──────────────────────────────────────────────
+    local keyCaption = Instance.new("TextLabel")
+    keyCaption.Text = "ENTER KEY"
+    keyCaption.Size = UDim2.new(1, -30, 0, 11)
+    keyCaption.Position = UDim2.new(0, 15, 0, 146)
+    keyCaption.BackgroundTransparency = 1
+    keyCaption.TextColor3 = Color3.fromRGB(80, 65, 115)
+    keyCaption.TextSize = 9
+    keyCaption.Font = Enum.Font.GothamBold
+    keyCaption.TextXAlignment = Enum.TextXAlignment.Left
+    keyCaption.Parent = card
+
     local box = Instance.new("TextBox")
+    box.Text = ""                                  -- FIX: explicitly blank so Roblox doesn't show "TextBox"
     box.PlaceholderText = "Paste your key here..."
-    box.Size = UDim2.new(1, -30, 0, 32)
-    box.Position = UDim2.new(0, 15, 0, 106)
-    box.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
-    box.TextColor3 = Color3.fromRGB(220, 215, 240)
-    box.PlaceholderColor3 = Color3.fromRGB(90, 85, 115)
+    box.Size = UDim2.new(1, -30, 0, 30)
+    box.Position = UDim2.new(0, 15, 0, 159)
+    box.BackgroundColor3 = Color3.fromRGB(18, 14, 30)
+    box.TextColor3 = Color3.fromRGB(220, 210, 245)
+    box.PlaceholderColor3 = Color3.fromRGB(75, 60, 110)
     box.TextSize = 11
     box.Font = Enum.Font.Code
     box.TextXAlignment = Enum.TextXAlignment.Left
@@ -164,57 +235,99 @@ local function ShowKeyGui()
     box.ClearTextOnFocus = false
     box.Parent = card
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
-    local bp = Instance.new("UIPadding", box)
-    bp.PaddingLeft = UDim.new(0, 8)
+    local bPad = Instance.new("UIPadding", box)
+    bPad.PaddingLeft = UDim.new(0, 10)
     local bStroke = Instance.new("UIStroke", box)
-    bStroke.Color = Color3.fromRGB(55, 45, 90)
+    bStroke.Color = Color3.fromRGB(50, 35, 85)
     bStroke.Thickness = 1
     box.Focused:Connect(function()
-        TweenService:Create(bStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(120, 70, 220)}):Play()
+        TweenService:Create(bStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(130, 70, 240)}):Play()
+        TweenService:Create(box,    TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(22, 17, 38)}):Play()
     end)
     box.FocusLost:Connect(function()
-        TweenService:Create(bStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(55, 45, 90)}):Play()
+        TweenService:Create(bStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(50, 35, 85)}):Play()
+        TweenService:Create(box,    TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(18, 14, 30)}):Play()
     end)
 
-    local status = MakeLabel("", 146, 10, Color3.fromRGB(220, 100, 100))
-    status.Size = UDim2.new(1, -20, 0, 16)
+    -- Status line
+    local status = Instance.new("TextLabel")
+    status.Text = ""
+    status.Size = UDim2.new(1, -30, 0, 14)
+    status.Position = UDim2.new(0, 15, 0, 196)
+    status.BackgroundTransparency = 1
+    status.TextColor3 = Color3.fromRGB(220, 90, 90)
+    status.TextSize = 10
+    status.Font = Enum.Font.Gotham
+    status.TextXAlignment = Enum.TextXAlignment.Center
+    status.TextWrapped = true
+    status.Parent = card
 
+    -- Verify button
     local btn = Instance.new("TextButton")
     btn.Text = "Verify Key"
-    btn.Size = UDim2.new(1, -30, 0, 34)
-    btn.Position = UDim2.new(0, 15, 0, 168)
-    btn.BackgroundColor3 = Color3.fromRGB(100, 55, 185)
+    btn.Size = UDim2.new(1, -30, 0, 36)
+    btn.Position = UDim2.new(0, 15, 0, 220)
+    btn.BackgroundColor3 = Color3.fromRGB(100, 50, 195)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextSize = 12
+    btn.TextSize = 13
     btn.Font = Enum.Font.GothamBold
     btn.BorderSizePixel = 0
     btn.AutoButtonColor = false
     btn.Parent = card
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+    -- Button gradient
+    local btnGrad = Instance.new("UIGradient", btn)
+    btnGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(130, 70, 230)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(80,  35, 165)),
+    })
+    btnGrad.Rotation = 90
+
     btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(130, 75, 220)}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(120, 65, 220)}):Play()
     end)
     btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 55, 185)}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 50, 195)}):Play()
+    end)
+
+    -- Animate card in
+    TweenService:Create(card, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0.5, 0, 0.5, 0)
+    }):Play()
+
+    -- Idle stroke pulse
+    task.spawn(function()
+        local colors = {
+            Color3.fromRGB(110, 55, 200),
+            Color3.fromRGB(150, 80, 240),
+            Color3.fromRGB(110, 55, 200),
+        }
+        local i = 0
+        while gui.Parent do
+            i = i % #colors + 1
+            TweenService:Create(stroke, TweenInfo.new(1.5, Enum.EasingStyle.Sine), {Color = colors[i]}):Play()
+            task.wait(1.5)
+        end
     end)
 
     getgenv()._reiduVerified = false
 
     local function SetStatus(text, color, loading)
         status.Text = text
-        status.TextColor3 = color or Color3.fromRGB(220, 100, 100)
+        status.TextColor3 = color or Color3.fromRGB(220, 90, 90)
         btn.Text = loading and "Verifying..." or "Verify Key"
         btn.BackgroundColor3 = loading
-            and Color3.fromRGB(55, 45, 90)
-            or Color3.fromRGB(100, 55, 185)
+            and Color3.fromRGB(40, 30, 65)
+            or  Color3.fromRGB(100, 50, 195)
         btn.Active = not loading
     end
 
     local function Shake()
         for _ = 1, 3 do
-            TweenService:Create(card, TweenInfo.new(0.05), {Position = UDim2.new(0.5, 7, 0.5, 0)}):Play()
+            TweenService:Create(card, TweenInfo.new(0.05), {Position = UDim2.new(0.5, 8, 0.5, 0)}):Play()
             task.wait(0.05)
-            TweenService:Create(card, TweenInfo.new(0.05), {Position = UDim2.new(0.5, -7, 0.5, 0)}):Play()
+            TweenService:Create(card, TweenInfo.new(0.05), {Position = UDim2.new(0.5, -8, 0.5, 0)}):Play()
             task.wait(0.05)
         end
         TweenService:Create(card, TweenInfo.new(0.05), {Position = UDim2.new(0.5, 0, 0.5, 0)}):Play()
@@ -223,34 +336,39 @@ local function ShowKeyGui()
     btn.MouseButton1Click:Connect(function()
         local key = box.Text:match("^%s*(.-)%s*$")
         if key == "" then
-            SetStatus("❌ Paste your key first.", Color3.fromRGB(220, 100, 100))
+            SetStatus("❌ Paste your key first.", Color3.fromRGB(220, 90, 90))
             Shake()
             return
         end
 
-        SetStatus("⏳ Checking...", Color3.fromRGB(200, 180, 100), true)
+        SetStatus("⏳ Checking...", Color3.fromRGB(200, 175, 90), true)
 
         task.spawn(function()
             local valid, reason, expiresAt = VerifyWithServer(key)
 
             if valid then
                 SaveSession(key, expiresAt)
-                SetStatus("✅ Accepted! Loading...", Color3.fromRGB(120, 220, 120), false)
-                TweenService:Create(stroke, TweenInfo.new(0.3), {Color = Color3.fromRGB(80, 200, 80)}):Play()
-                task.wait(0.8)
-                TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-                    Position = UDim2.new(0.5, 0, 0.4, 0)
+                SetStatus("✅ Accepted! Loading...", Color3.fromRGB(110, 220, 120), false)
+                TweenService:Create(stroke, TweenInfo.new(0.3), {Color = Color3.fromRGB(70, 210, 100)}):Play()
+                task.wait(0.9)
+                TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+                    Position = UDim2.new(0.5, 0, 0.42, 0),
+                    BackgroundTransparency = 1,
                 }):Play()
-                task.wait(0.3)
+                task.wait(0.35)
                 gui:Destroy()
                 getgenv()._reiduVerified = true
             else
                 ClearSession()
                 local msg = "❌ " .. (reason or "Invalid key.")
-                if reason and reason:find("expired")        then msg = "⏰ Key expired. Press Get Key in Discord." end
-                if reason and reason:find("used")           then msg = "🔒 Key already used. Press Get Key in Discord." end
-                if reason and reason:find("not registered") then msg = "🚫 This key is for a different account." end
-                SetStatus(msg, Color3.fromRGB(220, 100, 100), false)
+                if reason and reason:find("expired")        then msg = "⏰ Key expired — press Get Key in Discord." end
+                if reason and reason:find("used")           then msg = "🔒 Key already used — press Get Key in Discord." end
+                if reason and reason:find("not registered") then msg = "🚫 This key belongs to a different account." end
+                SetStatus(msg, Color3.fromRGB(220, 90, 90), false)
+                TweenService:Create(stroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(200, 60, 60)}):Play()
+                task.delay(0.8, function()
+                    TweenService:Create(stroke, TweenInfo.new(0.4), {Color = Color3.fromRGB(110, 55, 200)}):Play()
+                end)
                 Shake()
             end
         end)
